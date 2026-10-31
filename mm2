@@ -1,0 +1,470 @@
+
+--========================================
+-- EXZ HUB | MM2
+--========================================
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UIS = game:GetService("UserInputService")
+local SoundService = game:GetService("SoundService")
+local CoreGui = game:GetService("CoreGui")
+
+local Player = Players.LocalPlayer
+
+--========================================
+-- RAYFIELD
+--========================================
+
+local Rayfield = loadstring(game:HttpGet(
+    "https://sirius.menu/rayfield"
+))()
+
+local Window = Rayfield:CreateWindow({
+    Name = "EXZ HUB | MM2",
+    LoadingTitle = "EXZ HUB",
+    LoadingSubtitle = "Murder Mystery 2",
+    ConfigurationSaving = {
+        Enabled = false
+    }
+})
+
+local PlayerTab = Window:CreateTab("Player", 4483362458)
+local ESPTab = Window:CreateTab("ESP", 4483362458)
+
+--========================================
+-- CLICK SOUND
+--========================================
+
+local ClickSound = Instance.new("Sound")
+ClickSound.Name = "EXZ_Click"
+ClickSound.SoundId = "rbxassetid://87437544236708"
+ClickSound.Volume = 1
+ClickSound.Parent = SoundService
+
+local function PlayClick()
+    ClickSound:Stop()
+    ClickSound.TimePosition = 0
+    ClickSound:Play()
+end
+
+--========================================
+-- PLAYER SETTINGS
+--========================================
+
+local FlyEnabled = false
+local FlySpeed = 60
+local NoclipEnabled = false
+local WalkSpeed = 16
+
+local FlyConnection
+local NoclipConnection
+local BodyVelocity
+local BodyGyro
+
+local function GetCharacter()
+    return Player.Character
+end
+
+local function GetHumanoid()
+    local Character = GetCharacter()
+    return Character and Character:FindFirstChildOfClass("Humanoid")
+end
+
+-- WALK SPEED
+
+PlayerTab:CreateSlider({
+    Name = "WalkSpeed",
+    Range = {16, 150},
+    Increment = 1,
+    Suffix = "Speed",
+    CurrentValue = 16,
+    Callback = function(Value)
+        PlayClick()
+        WalkSpeed = Value
+
+        local Humanoid = GetHumanoid()
+        if Humanoid then
+            Humanoid.WalkSpeed = Value
+        end
+    end
+})
+
+--========================================
+-- FLY
+--========================================
+
+local function StopFly()
+    FlyEnabled = false
+
+    if FlyConnection then
+        FlyConnection:Disconnect()
+        FlyConnection = nil
+    end
+
+    if BodyVelocity then
+        BodyVelocity:Destroy()
+        BodyVelocity = nil
+    end
+
+    if BodyGyro then
+        BodyGyro:Destroy()
+        BodyGyro = nil
+    end
+end
+
+local function StartFly()
+    local Character = GetCharacter()
+    local Root = Character and Character:FindFirstChild("HumanoidRootPart")
+
+    if not Root then return end
+
+    StopFly()
+    FlyEnabled = true
+
+    BodyVelocity = Instance.new("BodyVelocity")
+    BodyVelocity.MaxForce = Vector3.new(1e9, 1e9, 1e9)
+    BodyVelocity.Velocity = Vector3.zero
+    BodyVelocity.Parent = Root
+
+    BodyGyro = Instance.new("BodyGyro")
+    BodyGyro.MaxTorque = Vector3.new(1e9, 1e9, 1e9)
+    BodyGyro.P = 10000
+    BodyGyro.Parent = Root
+
+    FlyConnection = RunService.RenderStepped:Connect(function()
+        if not FlyEnabled or not Root.Parent then
+            StopFly()
+            return
+        end
+
+        local Camera = workspace.CurrentCamera
+        local Direction = Vector3.zero
+
+        if UIS:IsKeyDown(Enum.KeyCode.W) then
+            Direction += Camera.CFrame.LookVector
+        end
+        if UIS:IsKeyDown(Enum.KeyCode.S) then
+            Direction -= Camera.CFrame.LookVector
+        end
+        if UIS:IsKeyDown(Enum.KeyCode.A) then
+            Direction -= Camera.CFrame.RightVector
+        end
+        if UIS:IsKeyDown(Enum.KeyCode.D) then
+            Direction += Camera.CFrame.RightVector
+        end
+        if UIS:IsKeyDown(Enum.KeyCode.Space) then
+            Direction += Vector3.new(0, 1, 0)
+        end
+        if UIS:IsKeyDown(Enum.KeyCode.LeftControl) then
+            Direction -= Vector3.new(0, 1, 0)
+        end
+
+        BodyVelocity.Velocity =
+            Direction.Magnitude > 0
+            and Direction.Unit * FlySpeed
+            or Vector3.zero
+
+        BodyGyro.CFrame = Camera.CFrame
+    end)
+end
+
+PlayerTab:CreateToggle({
+    Name = "Fly",
+    CurrentValue = false,
+    Callback = function(Value)
+        PlayClick()
+
+        if Value then
+            StartFly()
+        else
+            StopFly()
+        end
+    end
+})
+
+PlayerTab:CreateSlider({
+    Name = "Fly Speed",
+    Range = {10, 200},
+    Increment = 5,
+    Suffix = "Speed",
+    CurrentValue = 60,
+    Callback = function(Value)
+        FlySpeed = Value
+    end
+})
+
+--========================================
+-- NOCLIP
+--========================================
+
+local function SetNoclip(Value)
+    NoclipEnabled = Value
+
+    if NoclipConnection then
+        NoclipConnection:Disconnect()
+        NoclipConnection = nil
+    end
+
+    if Value then
+        NoclipConnection = RunService.Stepped:Connect(function()
+            local Character = GetCharacter()
+            if not Character then return end
+
+            for _, Part in ipairs(Character:GetDescendants()) do
+                if Part:IsA("BasePart") then
+                    Part.CanCollide = false
+                end
+            end
+        end)
+    else
+        local Character = GetCharacter()
+        if Character then
+            for _, Part in ipairs(Character:GetDescendants()) do
+                if Part:IsA("BasePart") then
+                    Part.CanCollide = true
+                end
+            end
+        end
+    end
+end
+
+PlayerTab:CreateToggle({
+    Name = "Noclip",
+    CurrentValue = false,
+    Callback = function(Value)
+        PlayClick()
+        SetNoclip(Value)
+    end
+})
+
+--========================================
+-- ESP
+--========================================
+
+local ESPEnabled = false
+local ESPObjects = {}
+
+local function GetRole(Target)
+    local Character = Target.Character
+    local Backpack = Target:FindFirstChildOfClass("Backpack")
+
+    local function HasTool(Name)
+        if Character and Character:FindFirstChild(Name) then
+            return true
+        end
+
+        if Backpack and Backpack:FindFirstChild(Name) then
+            return true
+        end
+
+        return false
+    end
+
+    if HasTool("Knife") then
+        return "Murderer", Color3.fromRGB(255, 50, 50)
+    elseif HasTool("Gun") then
+        return "Sheriff", Color3.fromRGB(50, 130, 255)
+    end
+
+    return "Innocent", Color3.fromRGB(50, 255, 100)
+end
+
+local function RemoveESP(Target)
+    if ESPObjects[Target] then
+        ESPObjects[Target].Highlight:Destroy()
+        ESPObjects[Target].Billboard:Destroy()
+        ESPObjects[Target] = nil
+    end
+end
+
+local function AddESP(Target)
+    if Target == Player or not Target.Character then return end
+
+    RemoveESP(Target)
+
+    local Character = Target.Character
+    local Head = Character:FindFirstChild("Head")
+    if not Head then return end
+
+    local Highlight = Instance.new("Highlight")
+    Highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    Highlight.FillTransparency = 0.65
+    Highlight.OutlineTransparency = 0
+    Highlight.Parent = Character
+
+    local Billboard = Instance.new("BillboardGui")
+    Billboard.Size = UDim2.fromOffset(150, 35)
+    Billboard.StudsOffset = Vector3.new(0, 2.5, 0)
+    Billboard.AlwaysOnTop = true
+    Billboard.Parent = Head
+
+    local Label = Instance.new("TextLabel")
+    Label.Size = UDim2.fromScale(1, 1)
+    Label.BackgroundTransparency = 1
+    Label.TextScaled = true
+    Label.Font = Enum.Font.GothamBold
+    Label.TextStrokeTransparency = 0.2
+    Label.Parent = Billboard
+
+    ESPObjects[Target] = {
+        Highlight = Highlight,
+        Billboard = Billboard,
+        Label = Label
+    }
+end
+
+local function UpdateESP()
+    for _, Target in ipairs(Players:GetPlayers()) do
+        if Target ~= Player and Target.Character then
+            if not ESPObjects[Target] then
+                AddESP(Target)
+            end
+
+            local Data = ESPObjects[Target]
+            if Data then
+                local Role, Color = GetRole(Target)
+
+                Data.Highlight.FillColor = Color
+                Data.Highlight.OutlineColor = Color
+                Data.Label.Text = Target.Name .. " | " .. Role
+                Data.Label.TextColor3 = Color
+            end
+        end
+    end
+end
+
+local function ClearESP()
+    for Target in pairs(ESPObjects) do
+        RemoveESP(Target)
+    end
+end
+
+ESPTab:CreateToggle({
+    Name = "Role ESP",
+    CurrentValue = false,
+    Callback = function(Value)
+        PlayClick()
+        ESPEnabled = Value
+
+        if not Value then
+            ClearESP()
+        end
+    end
+})
+
+RunService.Heartbeat:Connect(function()
+    if ESPEnabled then
+        UpdateESP()
+    end
+end)
+
+Players.PlayerRemoving:Connect(function(Target)
+    RemoveESP(Target)
+end)
+
+--========================================
+-- MINIMIZE ICON
+--========================================
+
+local ParentGui = CoreGui
+
+pcall(function()
+    if typeof(gethui) == "function" then
+        ParentGui = gethui()
+    end
+end)
+
+local OldGui = ParentGui:FindFirstChild("EXZ_MiniIcon")
+if OldGui then
+    OldGui:Destroy()
+end
+
+local MiniGui = Instance.new("ScreenGui")
+MiniGui.Name = "EXZ_MiniIcon"
+MiniGui.ResetOnSpawn = false
+MiniGui.IgnoreGuiInset = true
+MiniGui.Parent = ParentGui
+
+local Border = Instance.new("Frame")
+Border.Size = UDim2.fromOffset(68, 68)
+Border.Position = UDim2.new(0, 25, 0.5, 0)
+Border.AnchorPoint = Vector2.new(0, 0.5)
+Border.BackgroundColor3 = Color3.fromRGB(0, 145, 255)
+Border.BorderSizePixel = 0
+Border.Visible = false
+Border.Parent = MiniGui
+
+local BorderCorner = Instance.new("UICorner")
+BorderCorner.CornerRadius = UDim.new(0, 15)
+BorderCorner.Parent = Border
+
+local Stroke = Instance.new("UIStroke")
+Stroke.Color = Color3.fromRGB(0, 180, 255)
+Stroke.Thickness = 3
+Stroke.Parent = Border
+
+local Inner = Instance.new("Frame")
+Inner.Size = UDim2.new(1, -8, 1, -8)
+Inner.Position = UDim2.fromOffset(4, 4)
+Inner.BackgroundColor3 = Color3.fromRGB(20, 20, 25)
+Inner.BorderSizePixel = 0
+Inner.Parent = Border
+
+local InnerCorner = Instance.new("UICorner")
+InnerCorner.CornerRadius = UDim.new(0, 12)
+InnerCorner.Parent = Inner
+
+local Icon = Instance.new("ImageButton")
+Icon.Size = UDim2.new(1, -8, 1, -8)
+Icon.Position = UDim2.fromOffset(4, 4)
+Icon.BackgroundTransparency = 1
+Icon.Image = "rbxassetid://84478996527707"
+Icon.ScaleType = Enum.ScaleType.Fit
+Icon.Parent = Inner
+
+local function MinimizeHub()
+    PlayClick()
+    Border.Visible = true
+    Rayfield:SetVisibility(false)
+end
+
+Icon.MouseButton1Click:Connect(function()
+    PlayClick()
+    Border.Visible = false
+    Rayfield:SetVisibility(true)
+end)
+
+PlayerTab:CreateButton({
+    Name = "Minimize EXZ HUB",
+    Callback = function()
+        MinimizeHub()
+    end
+})
+
+--========================================
+-- RESPAWN SUPPORT
+--========================================
+
+Player.CharacterAdded:Connect(function(Character)
+    task.wait(1)
+
+    local Humanoid = Character:WaitForChild("Humanoid")
+    Humanoid.WalkSpeed = WalkSpeed
+
+    if FlyEnabled then
+        StartFly()
+    end
+
+    if NoclipEnabled then
+        SetNoclip(true)
+    end
+
+    ClearESP()
+end)
+
+Rayfield:Notify({
+    Title = "EXZ HUB",
+    Content = "EXZ HUB loaded successfully!",
+    Duration = 4
+})
+  
